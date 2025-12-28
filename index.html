@@ -2,81 +2,76 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stalker Pro Mobile</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stalker TV Ultra</title>
     <style>
-        body { font-family: -apple-system, system-ui; background: #000; color: #fff; padding: 20px; text-align: center; }
-        .container { max-width: 500px; margin: auto; }
-        input { width: 100%; padding: 15px; margin: 10px 0; border-radius: 12px; border: 1px solid #333; background: #1c1c1e; color: #fff; box-sizing: border-box; font-size: 16px; }
-        button { width: 100%; padding: 15px; background: #007aff; color: #fff; border: none; border-radius: 12px; font-weight: bold; font-size: 16px; margin-top: 10px; }
-        .channel { background: #1c1c1e; padding: 15px; margin-top: 10px; border-radius: 12px; cursor: pointer; border: 1px solid #2c2c2e; text-align: right; display: flex; justify-content: space-between; }
-        #status { color: #ff3b30; font-size: 14px; margin: 10px 0; }
-        .loader { color: #8e8e93; font-size: 12px; }
+        body { font-family: -apple-system, system-ui; background: #0b0b0b; color: #fff; padding: 20px; text-align: center; }
+        .box { background: #1c1c1e; padding: 20px; border-radius: 15px; border: 1px solid #333; margin-bottom: 20px; }
+        input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #444; background: #2c2c2e; color: #fff; font-size: 14px; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; background: #ff9500; color: #000; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .channel { background: #1c1c1e; padding: 15px; margin-top: 10px; border-radius: 10px; display: flex; justify-content: space-between; border: 1px solid #333; }
+        #log { font-size: 12px; color: #8e8e93; margin-top: 10px; text-align: left; direction: ltr; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h3>Stalker TV Pro</h3>
-        <input id="url" type="text" placeholder="رابط البورتال (Portal URL)" value="http://mag.greatott.me/">
-        <input id="mac" type="text" placeholder="الماك أدريس (MAC Address)" value="00:1A:79:C2:D4:B4">
-        <button id="loginBtn" onclick="connect()">تسجيل الدخول</button>
-        <div id="status"></div>
-        <div id="list"></div>
+    <div class="box">
+        <h3>Stalker Player</h3>
+        <input id="url" type="text" placeholder="رابط البورتال" value="http://mag.greatott.me">
+        <input id="mac" type="text" placeholder="الماك أدريس" value="00:1A:79:C2:D4:B4">
+        <button onclick="start()">تشغيل الآن</button>
+        <div id="log"></div>
     </div>
+    <div id="list"></div>
 
     <script>
-        // هذا الوسيط يحل مشكلة CORS للآيفون
-        const proxy = "https://api.allorigins.win/raw?url=";
+        // البروكسي البديل (Cors-proxy)
+        const proxy = "https://corsproxy.io/?";
 
-        async function connect() {
+        async function start() {
+            const log = document.getElementById('log');
             const portal = document.getElementById('url').value.trim().replace(/\/$/, "");
             const mac = document.getElementById('mac').value.trim();
-            const status = document.getElementById('status');
-            const list = document.getElementById('list');
             const api = `${portal}/server/load.php`;
+
+            log.innerText = "جاري الاتصال بالسيرفر...";
             
-            status.innerText = "جاري كسر الحماية والاتصال...";
-            status.className = "loader";
-
             try {
-                // خطوة 1: Handshake عبر البروكسي
-                let handshakeUrl = `${api}?type=stb&action=handshake`;
-                let res = await fetch(proxy + encodeURIComponent(handshakeUrl), {
-                    headers: { 'Cookie': `mac=${mac}` }
-                });
-                let d = await res.json();
-                const token = d.js.token;
+                // 1. Handshake
+                const handshake = `${api}?type=stb&action=handshake`;
+                const hRes = await fetch(proxy + encodeURIComponent(handshake));
+                const hData = await hRes.json();
+                const token = hData.js.token;
+                log.innerText += "\nتم الحصول على الرمز (Token)";
 
-                // خطوة 2: جلب القنوات
-                status.innerText = "جاري تحميل القائمة...";
-                let chUrl = `${api}?type=itv&action=get_all_channels`;
-                let chs = await fetch(proxy + encodeURIComponent(chUrl), {
+                // 2. Get Channels
+                const chReq = `${api}?type=itv&action=get_all_channels`;
+                const cRes = await fetch(proxy + encodeURIComponent(chReq), {
                     headers: { 'Authorization': `Bearer ${token}`, 'Cookie': `mac=${mac}` }
                 });
-                let chData = await chs.json();
+                const cData = await cRes.json();
                 
+                const list = document.getElementById('list');
                 list.innerHTML = "";
-                chData.js.data.forEach(c => {
+                
+                cData.js.data.forEach(ch => {
                     let div = document.createElement('div');
                     div.className = 'channel';
-                    div.innerHTML = `<span>${c.name}</span> <small>▶</small>`;
+                    div.innerHTML = `<span>${ch.name}</span> <span>▶</span>`;
                     div.onclick = async () => {
-                        let linkUrl = `${api}?type=itv&action=create_link&cmd=${c.cmd}`;
-                        let linkRes = await fetch(proxy + encodeURIComponent(linkUrl), {
+                        const linkReq = `${api}?type=itv&action=create_link&cmd=${ch.cmd}`;
+                        const lRes = await fetch(proxy + encodeURIComponent(linkReq), {
                             headers: { 'Authorization': `Bearer ${token}`, 'Cookie': `mac=${mac}` }
                         });
-                        let linkData = await linkRes.json();
-                        let final = linkData.js.cmd.split(" ")[0].replace("ffrt", "").trim();
-                        // فتح في VLC
-                        window.location.href = `vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(final)}`;
+                        const lData = await lRes.json();
+                        let streamUrl = lData.js.cmd.split(" ")[0].replace("ffrt", "").trim();
+                        window.location.href = `vlc://` + streamUrl; // اختصار مباشر لـ VLC
                     };
                     list.appendChild(div);
                 });
-                status.innerText = `تم العثور على ${chData.js.data.length} قناة`;
-                status.style.color = "#34c759";
-            } catch(e) { 
-                status.innerText = "فشل الاتصال. تأكد من صحة البيانات أو جرب شبكة أخرى.";
-                status.style.color = "#ff3b30";
+                log.innerText = "تم تحميل " + cData.js.data.length + " قناة بنجاح!";
+            } catch (e) {
+                log.innerText += "\nخطأ: " + e.message;
+                alert("تأكد أن السيرفر يعمل وأن الماك أدريس صحيح.");
             }
         }
     </script>
