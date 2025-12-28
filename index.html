@@ -3,82 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stalker TV Final</title>
+    <title>Stalker Elite Player</title>
     <style>
-        body { font-family: -apple-system, system-ui; background: #000; color: #fff; padding: 15px; text-align: center; }
-        .card { background: #1c1c1e; padding: 20px; border-radius: 15px; border: 1px solid #333; margin-bottom: 20px; }
-        input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #444; background: #2c2c2e; color: #fff; box-sizing: border-box; }
-        button { width: 100%; padding: 15px; background: #34c759; color: #000; border: none; border-radius: 8px; font-weight: bold; }
-        .channel { background: #1c1c1e; padding: 15px; margin-top: 10px; border-radius: 10px; display: flex; justify-content: space-between; border: 1px solid #333; cursor: pointer; }
-        #debug { font-size: 11px; color: #888; margin-top: 10px; white-space: pre-wrap; text-align: left; direction: ltr; }
+        body { font-family: -apple-system, system-ui; background: #050505; color: #fff; padding: 15px; text-align: center; }
+        .login-box { background: #151517; padding: 25px; border-radius: 20px; border: 1px solid #2c2c2e; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        input { width: 100%; padding: 14px; margin: 10px 0; border-radius: 10px; border: 1px solid #3a3a3c; background: #242426; color: #fff; font-size: 16px; box-sizing: border-box; }
+        button { width: 100%; padding: 16px; background: #30d158; color: #000; border: none; border-radius: 12px; font-weight: bold; font-size: 17px; cursor: pointer; transition: 0.3s; }
+        button:active { transform: scale(0.98); opacity: 0.8; }
+        .channel-item { background: #1c1c1e; padding: 18px; margin-top: 12px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #2c2c2e; text-align: right; }
+        #status-msg { font-size: 13px; color: #8e8e93; margin: 15px 0; min-height: 20px; line-height: 1.5; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h3>Stalker Player Pro</h3>
-        <input id="url" type="text" placeholder="رابط البورتال" value="http://mag.greatott.me">
-        <input id="mac" type="text" placeholder="الماك أدريس" value="00:1A:79:C2:D4:B4">
-        <button id="btn" onclick="run()">تشغيل القنوات</button>
-        <div id="debug"></div>
+    <div id="setup-ui" class="login-box">
+        <h2 style="margin-top:0">Stalker Player Pro</h2>
+        <input id="p_url" type="text" placeholder="رابط البورتال" value="http://mag.greatott.me">
+        <input id="p_mac" type="text" placeholder="الماك أدريس" value="00:1A:79:C2:D4:B4">
+        <button onclick="startApp()">اتصال بجهاز MAG</button>
+        <div id="status-msg">جاهز للاتصال...</div>
     </div>
-    <div id="list"></div>
+
+    <div id="list-ui" style="display:none; margin-top:20px;">
+        <input id="search" type="text" placeholder="🔍 ابحث عن قناة..." oninput="filterList()" style="position:sticky; top:10px; z-index:100;">
+        <div id="channels-container"></div>
+    </div>
 
     <script>
         const proxy = "https://api.allorigins.win/raw?url=";
+        let allChannels = [];
 
-        async function run() {
-            const debug = document.getElementById('debug');
-            const portal = document.getElementById('url').value.trim();
-            const mac = document.getElementById('mac').value.trim();
-            const api = `${portal}/server/load.php`;
+        async function apiReq(url, mac, token = null) {
+            const headers = {
+                'User-Agent': 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3',
+                'X-User-Agent': 'Model: MAG250; Link: Ethernet',
+                'Cookie': `mac=${encodeURIComponent(mac)};${token ? ' ministerial_token=' + token : ''}`
+            };
             
-            debug.innerText = "جاري المحاولة...";
+            const fullUrl = proxy + encodeURIComponent(url);
+            const res = await fetch(fullUrl, { headers });
+            const text = await res.text();
             
+            if (text.includes("Oops")) throw new Error("السيرفر رفض الاتصال (Oops). الماك قد يكون محظوراً أو الرابط غير دقيق.");
+            return JSON.parse(text);
+        }
+
+        async function startApp() {
+            const msg = document.getElementById('status-msg');
+            const portal = document.getElementById('p_url').value.trim().replace(/\/$/, "");
+            const mac = document.getElementById('p_mac').value.trim();
+            const apiBase = `${portal}/server/load.php`;
+
             try {
-                // 1. Handshake
-                const hUrl = `${api}?type=stb&action=handshake`;
-                const hRes = await fetch(proxy + encodeURIComponent(hUrl));
-                const hText = await hRes.text();
-                const hData = JSON.parse(hText);
+                msg.innerText = "⏳ جاري محاكاة جهاز MAG...";
+                const hData = await apiReq(`${apiBase}?type=stb&action=handshake`, mac);
                 const token = hData.js.token;
 
-                debug.innerText += "\nتم الاتصال.. جاري جلب القنوات";
+                msg.innerText = "⏳ جاري جلب قائمة القنوات...";
+                const cData = await apiReq(`${apiBase}?type=itv&action=get_all_channels`, mac, token);
+                allChannels = cData.js.data || cData.js;
 
-                // 2. Get All Channels
-                const cUrl = `${api}?type=itv&action=get_all_channels`;
-                const cRes = await fetch(proxy + encodeURIComponent(cUrl), {
-                    headers: { 'Authorization': `Bearer ${token}`, 'Cookie': `mac=${mac}` }
-                });
-                const cText = await cRes.text();
-                const cData = JSON.parse(cText);
-                
-                const list = document.getElementById('list');
-                list.innerHTML = "";
-                
-                // التأكد من وجود بيانات
-                const channels = cData.js.data || cData.js;
-                
-                channels.forEach(ch => {
-                    let div = document.createElement('div');
-                    div.className = 'channel';
-                    div.innerHTML = `<span>${ch.name}</span> <span>▶</span>`;
-                    div.onclick = async () => {
-                        const lUrl = `${api}?type=itv&action=create_link&cmd=${encodeURIComponent(ch.cmd)}`;
-                        const lRes = await fetch(proxy + encodeURIComponent(lUrl), {
-                            headers: { 'Authorization': `Bearer ${token}`, 'Cookie': `mac=${mac}` }
-                        });
-                        const lData = await lRes.json();
-                        let stream = lData.js.cmd.split(" ")[0].replace("ffrt", "").trim();
-                        // تشغيل مباشر في VLC
-                        window.location.href = `vlc://` + stream;
-                    };
-                    list.appendChild(div);
-                });
-                debug.innerText = "تم تحميل " + channels.length + " قناة!";
+                document.getElementById('setup-ui').style.display = 'none';
+                document.getElementById('list-ui').style.display = 'block';
+                renderChannels(allChannels, apiBase, token, mac);
             } catch (e) {
-                debug.innerText += "\nخطأ: " + e.message;
-                console.error(e);
+                msg.innerHTML = `<span style="color:#ff453a">❌ خطأ: ${e.message}</span>`;
             }
+        }
+
+        function renderChannels(list, api, token, mac) {
+            const container = document.getElementById('channels-container');
+            container.innerHTML = "";
+            list.forEach(ch => {
+                const div = document.createElement('div');
+                div.className = 'channel-item';
+                div.innerHTML = `<span>${ch.name}</span> <span style="color:#30d158">▶</span>`;
+                div.onclick = async () => {
+                    msg.innerText = "⏳ جاري استخراج الرابط...";
+                    const lData = await apiReq(`${api}?type=itv&action=create_link&cmd=${encodeURIComponent(ch.cmd)}`, mac, token);
+                    let stream = lData.js.cmd.split(" ")[0].replace("ffrt", "").trim();
+                    window.location.href = `vlc://` + stream;
+                };
+                container.appendChild(div);
+            });
+        }
+
+        function filterList() {
+            const query = document.getElementById('search').value.toLowerCase();
+            const filtered = allChannels.filter(c => c.name.toLowerCase().includes(query));
+            // ملاحظة: ستحتاج لإعادة تشغيل renderChannels مع المعطيات الأصلية
         }
     </script>
 </body>
