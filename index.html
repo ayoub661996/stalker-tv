@@ -3,75 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stalker TV Ultra</title>
+    <title>Stalker TV Final</title>
     <style>
-        body { font-family: -apple-system, system-ui; background: #0b0b0b; color: #fff; padding: 20px; text-align: center; }
-        .box { background: #1c1c1e; padding: 20px; border-radius: 15px; border: 1px solid #333; margin-bottom: 20px; }
-        input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #444; background: #2c2c2e; color: #fff; font-size: 14px; box-sizing: border-box; }
-        button { width: 100%; padding: 15px; background: #ff9500; color: #000; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        .channel { background: #1c1c1e; padding: 15px; margin-top: 10px; border-radius: 10px; display: flex; justify-content: space-between; border: 1px solid #333; }
-        #log { font-size: 12px; color: #8e8e93; margin-top: 10px; text-align: left; direction: ltr; }
+        body { font-family: -apple-system, system-ui; background: #000; color: #fff; padding: 15px; text-align: center; }
+        .card { background: #1c1c1e; padding: 20px; border-radius: 15px; border: 1px solid #333; margin-bottom: 20px; }
+        input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #444; background: #2c2c2e; color: #fff; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; background: #34c759; color: #000; border: none; border-radius: 8px; font-weight: bold; }
+        .channel { background: #1c1c1e; padding: 15px; margin-top: 10px; border-radius: 10px; display: flex; justify-content: space-between; border: 1px solid #333; cursor: pointer; }
+        #debug { font-size: 11px; color: #888; margin-top: 10px; white-space: pre-wrap; text-align: left; direction: ltr; }
     </style>
 </head>
 <body>
-    <div class="box">
-        <h3>Stalker Player</h3>
+    <div class="card">
+        <h3>Stalker Player Pro</h3>
         <input id="url" type="text" placeholder="رابط البورتال" value="http://mag.greatott.me">
         <input id="mac" type="text" placeholder="الماك أدريس" value="00:1A:79:C2:D4:B4">
-        <button onclick="start()">تشغيل الآن</button>
-        <div id="log"></div>
+        <button id="btn" onclick="run()">تشغيل القنوات</button>
+        <div id="debug"></div>
     </div>
     <div id="list"></div>
 
     <script>
-        // البروكسي البديل (Cors-proxy)
-        const proxy = "https://corsproxy.io/?";
+        const proxy = "https://api.allorigins.win/raw?url=";
 
-        async function start() {
-            const log = document.getElementById('log');
-            const portal = document.getElementById('url').value.trim().replace(/\/$/, "");
+        async function run() {
+            const debug = document.getElementById('debug');
+            const portal = document.getElementById('url').value.trim();
             const mac = document.getElementById('mac').value.trim();
             const api = `${portal}/server/load.php`;
-
-            log.innerText = "جاري الاتصال بالسيرفر...";
+            
+            debug.innerText = "جاري المحاولة...";
             
             try {
                 // 1. Handshake
-                const handshake = `${api}?type=stb&action=handshake`;
-                const hRes = await fetch(proxy + encodeURIComponent(handshake));
-                const hData = await hRes.json();
+                const hUrl = `${api}?type=stb&action=handshake`;
+                const hRes = await fetch(proxy + encodeURIComponent(hUrl));
+                const hText = await hRes.text();
+                const hData = JSON.parse(hText);
                 const token = hData.js.token;
-                log.innerText += "\nتم الحصول على الرمز (Token)";
 
-                // 2. Get Channels
-                const chReq = `${api}?type=itv&action=get_all_channels`;
-                const cRes = await fetch(proxy + encodeURIComponent(chReq), {
+                debug.innerText += "\nتم الاتصال.. جاري جلب القنوات";
+
+                // 2. Get All Channels
+                const cUrl = `${api}?type=itv&action=get_all_channels`;
+                const cRes = await fetch(proxy + encodeURIComponent(cUrl), {
                     headers: { 'Authorization': `Bearer ${token}`, 'Cookie': `mac=${mac}` }
                 });
-                const cData = await cRes.json();
+                const cText = await cRes.text();
+                const cData = JSON.parse(cText);
                 
                 const list = document.getElementById('list');
                 list.innerHTML = "";
                 
-                cData.js.data.forEach(ch => {
+                // التأكد من وجود بيانات
+                const channels = cData.js.data || cData.js;
+                
+                channels.forEach(ch => {
                     let div = document.createElement('div');
                     div.className = 'channel';
                     div.innerHTML = `<span>${ch.name}</span> <span>▶</span>`;
                     div.onclick = async () => {
-                        const linkReq = `${api}?type=itv&action=create_link&cmd=${ch.cmd}`;
-                        const lRes = await fetch(proxy + encodeURIComponent(linkReq), {
+                        const lUrl = `${api}?type=itv&action=create_link&cmd=${encodeURIComponent(ch.cmd)}`;
+                        const lRes = await fetch(proxy + encodeURIComponent(lUrl), {
                             headers: { 'Authorization': `Bearer ${token}`, 'Cookie': `mac=${mac}` }
                         });
                         const lData = await lRes.json();
-                        let streamUrl = lData.js.cmd.split(" ")[0].replace("ffrt", "").trim();
-                        window.location.href = `vlc://` + streamUrl; // اختصار مباشر لـ VLC
+                        let stream = lData.js.cmd.split(" ")[0].replace("ffrt", "").trim();
+                        // تشغيل مباشر في VLC
+                        window.location.href = `vlc://` + stream;
                     };
                     list.appendChild(div);
                 });
-                log.innerText = "تم تحميل " + cData.js.data.length + " قناة بنجاح!";
+                debug.innerText = "تم تحميل " + channels.length + " قناة!";
             } catch (e) {
-                log.innerText += "\nخطأ: " + e.message;
-                alert("تأكد أن السيرفر يعمل وأن الماك أدريس صحيح.");
+                debug.innerText += "\nخطأ: " + e.message;
+                console.error(e);
             }
         }
     </script>
